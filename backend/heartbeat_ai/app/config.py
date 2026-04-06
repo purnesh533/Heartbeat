@@ -60,7 +60,7 @@ class Settings:
     # API
     api_host: str = "127.0.0.1"
     api_port: int = 8000
-    # Allow browser demos (demo_frontend) to call GET /status from another origin.
+    # Allow browser UI (frontend/) to call GET /status from another origin.
     # Set False in locked-down production.
     api_cors_enabled: bool = True
     # GET /last_anomaly — annotated JPEG (base64) while phone or multi-user risk is active.
@@ -70,6 +70,11 @@ class Settings:
     # Save annotated anomaly frames to disk; JSON includes ``evidence`` (paths + filename).
     evidence_save_enabled: bool = True
     evidence_dir: str = "exports/evidence"
+    # PostgreSQL URL for evidence rows (annotated JPEG + JSON). Empty = disabled.
+    # Example: postgresql://user:pass@host:5432/dbname?sslmode=require
+    evidence_database_url: str = ""
+    # If set, GET /evidence/* requires header X-Evidence-Key (optional hardening).
+    evidence_read_api_key: str = ""
     # Max entries returned on GET /status (``evidence_history`` + ``evidence``).
     evidence_status_history_max: int = 30
 
@@ -189,4 +194,11 @@ def settings_from_env() -> Settings:
     ao = _truthy("HEARTBEAT_API_ONLY")
     if ao is not None:
         s.api_only = ao
+    if v := os.environ.get("HEARTBEAT_EVIDENCE_DATABASE_URL", "").strip():
+        s.evidence_database_url = v
+    if v := os.environ.get("HEARTBEAT_EVIDENCE_READ_KEY", "").strip():
+        s.evidence_read_api_key = v
+    es = _truthy("HEARTBEAT_EVIDENCE_SAVE")
+    if es is not None:
+        s.evidence_save_enabled = es
     return s

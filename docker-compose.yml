@@ -1,0 +1,20 @@
+# Local full stack: API + static frontend (nginx).
+# Set API base URL in the browser to http://localhost:8000 (frontend README).
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      HEARTBEAT_API_ONLY: "1"
+      HEARTBEAT_API_HOST: "0.0.0.0"
+      HEARTBEAT_API_PORT: "8000"
+
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro

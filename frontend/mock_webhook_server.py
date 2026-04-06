@@ -2,14 +2,14 @@
 """
 Local receiver for Heartbeat ``export_webhook_url`` testing.
 
-  python demo_frontend/mock_webhook_server.py
+  python mock_webhook_server.py
 
-Then set (PowerShell):
+Then set (PowerShell), from ``backend/``:
 
   $env:HEARTBEAT_EXPORT_ENABLED = "1"
   $env:HEARTBEAT_EXPORT_WEBHOOK_URL = "http://127.0.0.1:9000/ingest"
 
-Run Heartbeat (with API):  python -m heartbeat_ai.run
+Run API:  cd backend && python -m heartbeat_ai.run
 
 Open http://127.0.0.1:9000/ for the webhook viewer (last POST + optional image).
 """

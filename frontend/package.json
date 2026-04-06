@@ -1,0 +1,8 @@
+{
+  "name": "heartbeat-frontend",
+  "private": true,
+  "description": "Static dashboard + browser camera client for Heartbeat AI API",
+  "scripts": {
+    "start": "npx --yes serve . -l 8080"
+  }
+}

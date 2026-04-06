@@ -1,9 +1,10 @@
-demo_frontend/last_webhook.json
-heartbeat_ai/exports/
-heartbeat_ai/venv/
-heartbeat_ai/heartbeat.log
-heartbeat_ai/events.db
-heartbeat_ai/models/
+frontend/last_webhook.json
+backend/heartbeat_ai/exports/
+backend/heartbeat_ai/venv/
+backend/heartbeat_ai/.venv/
+backend/heartbeat_ai/heartbeat.log
+backend/heartbeat_ai/events.db
+backend/heartbeat_ai/models/
 *.pem
 __pycache__/
 *.py[cod]

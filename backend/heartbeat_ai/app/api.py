@@ -8,7 +8,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
+from .evidence_store import EvidenceStore
 from .state_manager import StateManager
 
 
@@ -18,13 +20,23 @@ def create_api_app(
     *,
     title: str = "Heartbeat AI",
     cors_enabled: bool = True,
+    api_only: bool = False,
     last_anomaly_getter: Optional[Callable[[], Dict[str, Any]]] = None,
     browser_ingest_handler: Optional[
         Callable[[bytes, Optional[str]], Dict[str, Any]]
     ] = None,
     browser_ingest_max_bytes: int = 6_000_000,
+    evidence_store: Optional[EvidenceStore] = None,
+    evidence_read_api_key: str = "",
 ) -> FastAPI:
     app = FastAPI(title=title, version="1.0.0")
+
+    def _evidence_key_ok(x_evidence_key: Optional[str]) -> None:
+        expected = (evidence_read_api_key or "").strip()
+        if not expected:
+            return
+        if (x_evidence_key or "").strip() != expected:
+            raise HTTPException(status_code=401, detail="evidence_key_required")
 
     if cors_enabled:
         app.add_middleware(
@@ -35,13 +47,35 @@ def create_api_app(
             allow_headers=["*"],
         )
 
+    @app.get("/")
+    def root() -> Dict[str, Any]:
+        """Service index; static UI is deployed separately under ``frontend/``."""
+
+        return {
+            "service": "Heartbeat AI API",
+            "endpoints": {
+                "health": "/health",
+                "status": "/status",
+                "last_anomaly": "/last_anomaly",
+                "ingest_frame": "POST /ingest/frame",
+                "evidence_recent": "/evidence/recent",
+                "evidence_image": "/evidence/{id}/image",
+                "openapi": "/docs",
+            },
+            "evidence_database": bool(evidence_store and evidence_store.ready),
+        }
+
     @app.get("/status")
     def get_status() -> Dict[str, Any]:
         return state_manager.to_status_dict()
 
     @app.get("/health")
     def health() -> Dict[str, Any]:
-        return {"ok": True, "camera_ok": bool(camera_ok_ref[0])}
+        return {
+            "ok": True,
+            "camera_ok": bool(camera_ok_ref[0]),
+            "api_only": api_only,
+        }
 
     @app.get("/last_anomaly")
     def last_anomaly() -> Dict[str, Any]:
@@ -88,5 +122,33 @@ def create_api_app(
                 )
             raise HTTPException(status_code=400, detail=err)
         return result
+
+    @app.get("/evidence/recent")
+    def evidence_recent(
+        limit: int = 30,
+        x_evidence_key: Optional[str] = Header(None, alias="X-Evidence-Key"),
+    ) -> Dict[str, Any]:
+        """List recent rows from PostgreSQL evidence store (metadata + full detection JSON)."""
+
+        _evidence_key_ok(x_evidence_key)
+        if evidence_store is None or not evidence_store.ready:
+            raise HTTPException(status_code=503, detail="evidence_database_disabled")
+        rows = evidence_store.list_recent(limit)
+        return {"ok": True, "count": len(rows), "items": rows}
+
+    @app.get("/evidence/{row_id}/image")
+    def evidence_image(
+        row_id: int,
+        x_evidence_key: Optional[str] = Header(None, alias="X-Evidence-Key"),
+    ) -> Response:
+        """Return stored annotated JPEG for a given evidence id."""
+
+        _evidence_key_ok(x_evidence_key)
+        if evidence_store is None or not evidence_store.ready:
+            raise HTTPException(status_code=503, detail="evidence_database_disabled")
+        data = evidence_store.fetch_jpeg(row_id)
+        if not data:
+            raise HTTPException(status_code=404, detail="not_found")
+        return Response(content=data, media_type="image/jpeg")
 
     return app

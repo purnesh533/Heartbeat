@@ -1,0 +1,13 @@
+__pycache__
+*.py[cod]
+.git
+.gitignore
+venv
+.venv
+heartbeat_ai/__pycache__
+heartbeat_ai/**/__pycache__
+heartbeat_ai/exports
+heartbeat_ai/*.log
+heartbeat_ai/events.db
+heartbeat_ai/models/*.pt
+heartbeat_ai/models/*.onnx

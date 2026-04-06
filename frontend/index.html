@@ -156,7 +156,7 @@
   <p class="sub">
     Polls <code>GET /status</code>, <code>GET /health</code>, and <code>GET /last_anomaly</code>.
     When a phone or multi-user risk is active, the annotated camera frame appears below.
-    Start: <code>python -m heartbeat_ai.run</code> (not <code>--visual</code>).
+    Start backend from <code>backend/</code>: <code>python -m heartbeat_ai.run</code> (not <code>--visual</code>).
   </p>
 
   <div class="row">
@@ -220,7 +220,7 @@
 
   <footer>
     <strong>Export / webhook testing:</strong> run
-    <code>python demo_frontend/mock_webhook_server.py</code> then set
+    <code>python mock_webhook_server.py</code> (from <code>frontend/</code>) then set
     <code>HEARTBEAT_EXPORT_WEBHOOK_URL=http://127.0.0.1:9000/ingest</code> and
     <code>HEARTBEAT_EXPORT_ENABLED=1</code> (or <code>--export</code>). Open
     <a href="http://127.0.0.1:9000/" target="_blank" rel="noopener">http://127.0.0.1:9000/</a> for the webhook viewer.
@@ -360,7 +360,7 @@
         }
       } catch (e) {
         errEl.textContent =
-          "Cannot reach API (" + e.message + "). Is `python -m heartbeat_ai.run` running?";
+          "Cannot reach API (" + e.message + "). Is the backend running (cd backend && python -m heartbeat_ai.run)?";
         errEl.hidden = false;
         document.getElementById("v-cam").textContent = "—";
         document.getElementById("c-cam").className = "card";

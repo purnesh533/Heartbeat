@@ -1,129 +1,136 @@
-# Heartbeat AI — Office Presence & Device Monitoring
+# Heartbeat AI — monorepo
 
-Production-oriented Python service that reads the laptop webcam, estimates presence and headcount via MediaPipe BlazeFace, detects phones/tablets with YOLOv8n (periodic inference for low CPU use), tracks idle/absence with a debounce buffer, and exposes JSON over FastAPI for a .NET (or other) heartbeat client.
+Office presence and device monitoring: **backend** (Python, FastAPI, MediaPipe, YOLO) and **frontend** (static dashboard + browser camera client).
 
-For a full technical overview (architecture, face pipeline YuNet/Haar, modules, API, troubleshooting), see **[heartbeat_ai/PROJECT.md](heartbeat_ai/PROJECT.md)**.
+| Directory | Role |
+|-----------|------|
+| [`backend/`](backend/) | API and CV pipeline (`heartbeat_ai` package). |
+| [`frontend/`](frontend/) | Static HTML (`index.html`, `browser_camera.html`). |
 
-## Requirements
+Deep dive: [`backend/heartbeat_ai/PROJECT.md`](backend/heartbeat_ai/PROJECT.md).
 
-- Python 3.10+
-- Windows, macOS, or Linux (camera backend may differ; Windows uses DirectShow where applicable)
-- First run downloads `yolov8n.pt` via Ultralytics (internet required once)
+## Quick start (local)
 
-## Setup
+**Backend** (from `backend/`):
 
 ```bash
-cd heartbeat_ai
+cd backend
 python -m venv .venv
 .venv\Scripts\activate   # Windows
 # source .venv/bin/activate  # Linux/macOS
 pip install -r requirements.txt
+python -m heartbeat_ai.run --host 127.0.0.1 --port 8000
 ```
 
-Run from the **parent of** the `heartbeat_ai` folder (e.g. project root `T2`):
+- **`--api-only`** — No local webcam; use `frontend/browser_camera.html` to send frames to `POST /ingest/frame`.
+- **`--debug`** — HTTP API + OpenCV preview.
+- **`--visual`** — Preview only; no HTTP API.
+
+**Frontend** (from `frontend/`):
 
 ```bash
-python -m heartbeat_ai.run
+cd frontend
+npm start
+# or: python -m http.server 8080
 ```
 
-Other useful modes:
+Open [http://127.0.0.1:8080/](http://127.0.0.1:8080/). Set the **API base URL** to `http://127.0.0.1:8000` (saved in `localStorage`).
+
+### Install from repository root
 
 ```bash
-python -m heartbeat_ai.run --debug   # HTTP API + OpenCV preview window
-python -m heartbeat_ai.run --visual  # Preview only; no HTTP API
-python -m heartbeat_ai.run --export  # Disk export + optional webhook (see below)
-python -m heartbeat_ai.run --api-only  # No local webcam; browser sends JPEGs to POST /ingest/frame
+pip install -r requirements.txt
 ```
 
-Or from inside `heartbeat_ai`:
+This includes [`backend/requirements.txt`](backend/requirements.txt) via `-r`. You still **run** the app from `backend/`:
 
 ```bash
-python run.py
+cd backend && python -m heartbeat_ai.run --api-only --host 127.0.0.1 --port 8000
 ```
 
-## Demo frontend (browser)
+## Docker
 
-The static dashboard lives in **`demo_frontend/`** at the repo root (sibling of `heartbeat_ai/`). It polls `GET /status`, `GET /health`, and `GET /last_anomaly` and shows evidence paths from `/status`.
+From repository root:
 
-1. **Start the API** (required — do not use `--visual`, which disables HTTP):
+```bash
+docker compose up --build
+```
 
-   ```bash
-   # From repo root (parent of heartbeat_ai/)
-   python -m heartbeat_ai.run
-   ```
+- API: [http://127.0.0.1:8000](http://127.0.0.1:8000) (`/health`, `/status`, `/docs`)
+- Static UI: [http://127.0.0.1:8080](http://127.0.0.1:8080)
 
-2. **Serve `demo_frontend` over HTTP** (avoids `file://` fetch restrictions):
+## Deploy
 
-   ```bash
-   cd demo_frontend
-   python -m http.server 8080
-   ```
+### Render (Blueprint)
 
-3. **Open the dashboard** in a browser: [http://127.0.0.1:8080/index.html](http://127.0.0.1:8080/index.html)
+This repo includes [`render.yaml`](render.yaml): **root directory `backend`**, start command with `--api-only` and `$PORT`.
 
-   If the API is not on `127.0.0.1:8000`, change the **API base URL** in the page (saved in `localStorage`).
+Manual settings:
 
-4. **Browser webcam → API** (e.g. backend on Render): start the service with `--api-only` (or `HEARTBEAT_API_ONLY=1`). Open [http://127.0.0.1:8080/browser_camera.html](http://127.0.0.1:8080/browser_camera.html), set the API URL to your deployed host, allow the camera, and frames POST to `/ingest/frame`. Optional shared secret: set `HEARTBEAT_BROWSER_INGEST_KEY` on the server and the same value in the page as **X-Ingest-Key**.
+- **Root directory:** `backend`
+- **Build:** `pip install -r requirements.txt`
+- **Start:** `HEARTBEAT_API_ONLY=1 python -m heartbeat_ai.run --api-only --host 0.0.0.0 --port $PORT`
+- **Health check:** `/health`
 
-Webhook / export testing (`mock_webhook_server.py`, env vars) is documented in **[demo_frontend/README.md](demo_frontend/README.md)**.
+### Railway / Fly.io / other
+
+Same pattern: build and start from **`backend/`**, bind **`0.0.0.0`**, use the platform port variable. See [`backend/README.md`](backend/README.md).
+
+### Frontend
+
+Deploy **`frontend/`** as a static site (Netlify, Vercel, Cloudflare Pages, S3, or the `frontend` service in `docker-compose.yml`). Point the UI’s API base URL at your public API URL.
+
+## Requirements
+
+- Python **3.10+** (`backend/runtime.txt` pins 3.10.x for hosts that read it)
+- First run downloads **`yolov8n.pt`** (Ultralytics; network once)
 
 ## Configuration
 
-- Defaults live in [`heartbeat_ai/app/config.py`](heartbeat_ai/app/config.py).
-- Environment overrides include: `HEARTBEAT_CAMERA_INDEX`, `HEARTBEAT_API_HOST`, `HEARTBEAT_API_PORT`, `HEARTBEAT_ABSENCE_BUFFER_SEC`, and (for export) `HEARTBEAT_EXPORT_ENABLED`, `HEARTBEAT_EXPORT_WEBHOOK_URL`, `HEARTBEAT_EXPORT_WEBHOOK_KEY`, `HEARTBEAT_EXPORT_DIR`.
-- **Browser ingest:** `HEARTBEAT_API_ONLY`, `HEARTBEAT_BROWSER_INGEST` (`0`/`1`), `HEARTBEAT_BROWSER_INGEST_KEY`, `HEARTBEAT_BROWSER_INGEST_MAX_BYTES`.
+- Defaults: [`backend/heartbeat_ai/app/config.py`](backend/heartbeat_ai/app/config.py)
+- **Camera / API:** `HEARTBEAT_CAMERA_INDEX`, `HEARTBEAT_API_HOST`, `HEARTBEAT_API_PORT`, `HEARTBEAT_ABSENCE_BUFFER_SEC`
+- **Browser ingest:** `HEARTBEAT_API_ONLY`, `HEARTBEAT_BROWSER_INGEST`, `HEARTBEAT_BROWSER_INGEST_KEY`, `HEARTBEAT_BROWSER_INGEST_MAX_BYTES`
+- **Evidence database (PostgreSQL):** `HEARTBEAT_EVIDENCE_DATABASE_URL` — stores each anomaly as annotated JPEG + JSON (no PC disk needed). Optional `HEARTBEAT_EVIDENCE_READ_KEY` — then use header `X-Evidence-Key` on `GET /evidence/recent` and `GET /evidence/{id}/image`.
+- **Export / webhook:** `HEARTBEAT_EXPORT_ENABLED`, `HEARTBEAT_EXPORT_WEBHOOK_URL`, `HEARTBEAT_EXPORT_WEBHOOK_KEY`, `HEARTBEAT_EXPORT_DIR`
 
-Logs are written to `heartbeat.log` next to the package (under `heartbeat_ai/`). Optional SQLite events DB: `events.db`.
+Logs and SQLite default to files under `backend/heartbeat_ai/`.
 
-### Evidence JPEGs (anomaly snapshots)
+## API (summary)
 
-When `evidence_save_enabled` is true (default), each time an annotated anomaly frame is produced (for `GET /last_anomaly` and/or export webhooks), a JPEG is written under `heartbeat_ai/` at `evidence_dir` (default `exports/evidence/`). Anomaly export and webhook JSON include an `evidence` object: `filename`, `relative_path`, `absolute_path`, and `frame_index`. `GET /status` mirrors the latest saves for dashboards (see API below). History length on `/status` is capped by `evidence_status_history_max`.
+- **`GET /`** — Service index JSON
+- **`GET /status`** — `face_count`, `phone_detected`, `evidence` (may include `database_id` / `storage: postgres`), `browser_ingest`, …
+- **`GET /health`** — `ok`, `camera_ok`, `api_only`
+- **`GET /last_anomaly`** — Annotated frame (base64) while risk active
+- **`POST /ingest/frame`** — Multipart JPEG (`file`); optional `X-Ingest-Key`
+- **`GET /evidence/recent?limit=30`** — Recent PostgreSQL evidence rows (when `HEARTBEAT_EVIDENCE_DATABASE_URL` is set). Optional `X-Evidence-Key` if `HEARTBEAT_EVIDENCE_READ_KEY` is set.
+- **`GET /evidence/{id}/image`** — Stored annotated JPEG for that row (same auth rules as above).
 
-### JSON export and webhooks
-
-With `export_enabled` (or `--export` / `HEARTBEAT_EXPORT_ENABLED`), the service writes throttled `exports/latest.json`, and on anomalies can POST JSON (and optionally embed `image_jpeg_base64`) plus write `exports/last_anomaly.json`. See `export_*` settings in config.
-
-## API
-
-- `GET http://127.0.0.1:8000/status` — JSON includes:
-  - `face_count`, `is_present`, `phone_detected`, `status`, `last_updated` (Unix seconds).
-  - `evidence` — most recent saved anomaly JPEG metadata, or `null`: `filename`, `relative_path`, `absolute_path`, `frame_index`, `saved_at_unix`.
-  - `evidence_history` — same-shaped objects, newest first (up to `evidence_status_history_max`).
-- `GET http://127.0.0.1:8000/health` — `{ "ok": true, "camera_ok": bool }`.
-- `GET http://127.0.0.1:8000/last_anomaly` — while phone or multi-user risk is active: `available`, `image_jpeg_base64` (annotated JPEG when enabled), detection fields aligned with export JSON, and `evidence` when a file was saved. Otherwise `{ "available": false }`. Tuning: `api_last_anomaly_*` in config; set `api_last_anomaly_enabled` to disable.
-- `POST http://127.0.0.1:8000/ingest/frame` — `multipart/form-data` with field **`file`** (JPEG). Optional header **`X-Ingest-Key`** if `HEARTBEAT_BROWSER_INGEST_KEY` is set. Response JSON matches export-style detection fields (`ok`, `anomaly`, `face_count`, `phones`, …). With `api_only`, `GET /status` is driven from the latest ingest. `GET /status` also includes `browser_ingest` (last request summary) when ingest has run.
-
-CORS for browser demos is controlled by `api_cors_enabled` (default on for local demos).
-
-## CLI
+## CLI flags
 
 | Flag | Description |
 |------|-------------|
-| `--debug` | HTTP API plus OpenCV window with face / phone overlay. |
-| `--visual` | OpenCV window only; no FastAPI server. |
-| `--export` | Enable `exports/` JSON and optional webhook (`HEARTBEAT_EXPORT_WEBHOOK_URL`). |
-| `--api-only` | No local camera thread; use browser `POST /ingest/frame` (set `HEARTBEAT_API_ONLY=1` on hosts like Render). |
-| `--host`, `--port` | Override API bind address. |
+| `--debug` | API + OpenCV overlay window |
+| `--visual` | OpenCV only; no API |
+| `--export` | Enable disk export + optional webhook |
+| `--api-only` | No local camera; browser ingest |
+| `--host`, `--port` | API bind address |
 
-## PyInstaller (single executable, no console)
+## PyInstaller
 
-From the `heartbeat_ai` directory (or pass full paths), with `PYTHONPATH` set to the **parent** of the `heartbeat_ai` package if needed:
-
-```bash
-set PYTHONPATH=..
-pyinstaller --onefile --noconsole run.py
-```
-
-If the build misses assets, add collectors (after a failed run):
+From **`backend/`**, with `PYTHONPATH` including the current directory:
 
 ```bash
-pyinstaller --onefile --noconsole --collect-all mediapipe --collect-all ultralytics run.py
+cd backend
+set PYTHONPATH=.
+pyinstaller --onefile --noconsole heartbeat_ai/run.py
 ```
 
-## Tablet detection note
-
-Standard COCO YOLOv8n includes **cell phone** but not **tablet**. The detector matches class names containing `phone` or `tablet` (and `cell phone`). For reliable tablet detection, consider a fine-tuned model and point `yolo_model_path` in config to your weights.
+Add `--collect-all mediapipe --collect-all ultralytics` if assets are missing.
 
 ## Security
 
-Bind the API to `127.0.0.1` by default; expose only on trusted networks if you change the host.
+Default API bind is loopback. For public deploys, use TLS, consider `HEARTBEAT_BROWSER_INGEST_KEY`, and tighten CORS (`api_cors_enabled`) when not using the open demo.
+
+## Tablet detection note
+
+COCO YOLOv8n includes **cell phone** but not **tablet** by default. The detector matches name substrings; for tablets, use custom weights and `yolo_model_path` in config.

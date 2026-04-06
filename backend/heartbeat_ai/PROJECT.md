@@ -1,6 +1,6 @@
 # Heartbeat AI — Project Documentation
 
-This document describes the **Heartbeat AI** office monitoring service: goals, architecture, modules, configuration, and operations. For quick install and commands, see [README.md](README.md).
+This document describes the **Heartbeat AI** office monitoring service: goals, architecture, modules, configuration, and operations. For quick install and commands, see the repository [README.md](../../README.md) and [backend/README.md](../README.md).
 
 ---
 
@@ -99,7 +99,7 @@ The active backend name is available in logs and in the visual HUD as **`Face en
 | `idle_timer.py` | Debounced presence and idle duration. |
 | `state_manager.py` | Locked snapshot for API and logic. |
 | `frame_queue.py` | Bounded queue with drop-oldest policy. |
-| `api.py` | FastAPI app: `/status`, `/health`. |
+| `api.py` | FastAPI: `/`, `/status`, `/health`, `/last_anomaly`, `POST /ingest/frame`. |
 | `logger.py` | File + optional console logging; `log_event` for structured lines. |
 | `database.py` | SQLite `events` table; throttled inserts. |
 | `config.py` | `Settings` dataclass: camera, queue, absence buffer, YuNet, YOLO, API, paths, DB throttle. |
@@ -126,7 +126,8 @@ All defaults are in [`app/config.py`](app/config.py). Notable fields:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/status` | JSON: `face_count`, `is_present`, `phone_detected`, `status`, `last_updated` (Unix time). |
-| GET | `/health` | JSON: `ok`, `camera_ok`. |
+| GET | `/health` | JSON: `ok`, `camera_ok`, `api_only`. |
+| POST | `/ingest/frame` | Browser JPEG upload (`multipart` field `file`). |
 
 With **`--visual`**, the HTTP server is **not** started; use default mode or `--debug` for API + window.
 
@@ -153,7 +154,7 @@ Press **Q** in the preview window (with focus) or **Ctrl+C** in the terminal to 
 
 ## 11. Dependencies
 
-See [`requirements.txt`](requirements.txt). Important constraints:
+See [`../requirements.txt`](../requirements.txt). Important constraints:
 
 - **Python 3.10+**
 - **NumPy 1.x** (`numpy>=1.26.2,<2`) — many PyTorch wheels still conflict with NumPy 2.x.
@@ -180,7 +181,7 @@ First-run artifacts:
 
 ## 13. Packaging (PyInstaller)
 
-See [README.md](README.md) for `pyinstaller --onefile --noconsole` and optional `--collect-all mediapipe ultralytics`. Ensure the packaged app can find `heartbeat_ai`, models, and weights (paths / `PYTHONPATH`).
+See the repository [README.md](../../README.md) for `pyinstaller --onefile --noconsole` and optional `--collect-all mediapipe ultralytics`. Run from `backend/` with `PYTHONPATH` set to `backend` so the `heartbeat_ai` package resolves.
 
 ---
 
@@ -190,4 +191,4 @@ The API defaults to **127.0.0.1**. Do not expose it on untrusted networks withou
 
 ---
 
-*Document version: aligned with the `heartbeat_ai` package layout under the repository root.*
+*Document version: `heartbeat_ai` package lives under `backend/heartbeat_ai/`; static UI under `frontend/`.*

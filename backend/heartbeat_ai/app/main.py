@@ -15,6 +15,7 @@ from .frame_analysis import analyze_frame_bgr, build_snap_from_detection
 from .anti_spoof import AntiSpoofFilter
 from .config import Settings
 from .database import EventDatabase
+from .evidence_store import EvidenceStore
 from .frame_queue import FrameQueue
 from .idle_timer import IdleTickResult, IdleTimer
 from .logger import log_event
@@ -172,6 +173,13 @@ class MonitorService:
             self.db.init()
         except Exception:
             logger.exception("SQLite init failed; continuing without DB")
+
+        self.evidence_store: Optional[EvidenceStore] = None
+        edb = (settings.evidence_database_url or "").strip()
+        if edb:
+            est = EvidenceStore(edb)
+            if est.init():
+                self.evidence_store = est
 
         self.shutdown_event = threading.Event()
 
@@ -337,6 +345,8 @@ class MonitorService:
                                 jpeg_quality=s.api_last_anomaly_jpeg_quality,
                                 save_evidence_to=ev_dir,
                                 evidence_package_root=ev_root,
+                                evidence_store=self.evidence_store,
+                                evidence_source="browser",
                             )
                             with self._anomaly_api_lock:
                                 self._last_anomaly_api = pl
@@ -561,6 +571,8 @@ class MonitorService:
                                 jpeg_quality=self.settings.api_last_anomaly_jpeg_quality,
                                 save_evidence_to=ev_dir,
                                 evidence_package_root=ev_root,
+                                evidence_store=self.evidence_store,
+                                evidence_source="camera",
                             )
                             with self._anomaly_api_lock:
                                 self._last_anomaly_api = pl

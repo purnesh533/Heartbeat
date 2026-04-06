@@ -18,7 +18,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
 
 import cv2
 import numpy as np
@@ -26,6 +26,9 @@ import numpy as np
 from .config import Settings
 from .phone_detector import PhoneBox
 from .presence import FaceDetectionResult
+
+if TYPE_CHECKING:
+    from .evidence_store import EvidenceStore
 
 logger = logging.getLogger("heartbeat")
 
@@ -188,6 +191,8 @@ def build_detection_payload(
     jpeg_quality: int,
     save_evidence_to: Optional[Path] = None,
     evidence_package_root: Optional[Path] = None,
+    evidence_store: Optional["EvidenceStore"] = None,
+    evidence_source: str = "camera",
 ) -> Dict[str, Any]:
     reasons: List[str] = []
     if snap.get("phone_detected"):
@@ -239,7 +244,13 @@ def build_detection_payload(
         and anomaly
         and evidence_package_root is not None
     )
-    if frame_bgr is not None and (include_image_b64 or can_save_evidence):
+    save_to_db = bool(
+        anomaly
+        and frame_bgr is not None
+        and evidence_store is not None
+        and getattr(evidence_store, "ready", False)
+    )
+    if frame_bgr is not None and (include_image_b64 or can_save_evidence or save_to_db):
         ann = render_annotated_frame(
             frame_bgr,
             face_res,
@@ -262,6 +273,23 @@ def build_detection_payload(
             )
             if ev:
                 payload["evidence"] = ev
+        if save_to_db and evidence_store is not None:
+            ok_enc, buf = cv2.imencode(
+                ".jpg",
+                ann,
+                [int(cv2.IMWRITE_JPEG_QUALITY), int(jpeg_quality)],
+            )
+            if ok_enc and buf is not None:
+                row_id = evidence_store.insert(
+                    jpeg_bytes=buf.tobytes(),
+                    payload=payload,
+                    evidence_source=evidence_source,
+                )
+                if row_id is not None:
+                    ev_out: Dict[str, Any] = dict(payload.get("evidence") or {})
+                    ev_out["database_id"] = row_id
+                    ev_out["storage"] = "postgres"
+                    payload["evidence"] = ev_out
         if include_image_b64:
             b64 = _jpeg_base64(ann, jpeg_quality)
             if b64:
@@ -306,9 +334,11 @@ class AnomalyExporter:
                 Callable[[Dict[str, Any], str], None],
             ]
         ] = None,
+        evidence_store: Optional["EvidenceStore"] = None,
     ) -> None:
         self._s = settings
         self._on_anomaly_payload = on_anomaly_payload
+        self._evidence_store = evidence_store
         self._last_disk_write: float = 0.0
         self._last_normal_http: float = 0.0
         self._last_anomaly_http: float = 0.0
@@ -364,6 +394,7 @@ class AnomalyExporter:
         )
         ev_dir = self._s.evidence_dir_path() if self._s.evidence_save_enabled else None
         ev_root = self._s.models_dir().parent if ev_dir else None
+        ev_db = self._evidence_store if self._evidence_store and self._evidence_store.ready else None
 
         # JSON-only payload (never embed image) for periodic disk + normal HTTP
         payload_json_only = build_detection_payload(
@@ -397,6 +428,8 @@ class AnomalyExporter:
                                 jpeg_quality=self._s.export_jpeg_quality,
                                 save_evidence_to=ev_dir,
                                 evidence_package_root=ev_root,
+                                evidence_store=ev_db,
+                                evidence_source=evidence_source,
                             )
                             _post_json(
                                 url,
@@ -417,6 +450,8 @@ class AnomalyExporter:
                                 jpeg_quality=self._s.export_jpeg_quality,
                                 save_evidence_to=ev_dir,
                                 evidence_package_root=ev_root,
+                                evidence_store=ev_db,
+                                evidence_source=evidence_source,
                             )
                             _post_json(
                                 url,

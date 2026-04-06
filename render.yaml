@@ -1,0 +1,9 @@
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: heartbeat-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: HEARTBEAT_API_ONLY=1 python -m heartbeat_ai.run --api-only --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health

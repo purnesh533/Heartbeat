@@ -2,9 +2,9 @@
 CLI entry: camera + processing threads + FastAPI (uvicorn).
 Production: no window. Use --debug for OpenCV preview.
 
-From repository root (parent of `heartbeat_ai/`):
+From `backend/` (parent of the `heartbeat_ai` package):
   python -m heartbeat_ai.run
-From inside `heartbeat_ai/`:
+From inside `backend/heartbeat_ai/`:
   python run.py
 """
 
@@ -18,9 +18,9 @@ import threading
 import time
 from pathlib import Path
 
-# Ensure `heartbeat_ai` is importable whether cwd is repo root or package dir
+# Ensure `heartbeat_ai` is importable: cwd should be `backend/` (parent of this package).
 _PKG_ROOT = Path(__file__).resolve().parent
-_REPO_ROOT = _PKG_ROOT.parent
+_REPO_ROOT = _PKG_ROOT.parent  # directory that contains the `heartbeat_ai` package folder
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
@@ -135,6 +135,7 @@ def main() -> None:
             service.state,
             camera_ok,
             cors_enabled=settings.api_cors_enabled,
+            api_only=settings.api_only,
             last_anomaly_getter=service.get_last_anomaly_for_api,
             browser_ingest_handler=(
                 service.process_browser_ingest
@@ -142,6 +143,8 @@ def main() -> None:
                 else None
             ),
             browser_ingest_max_bytes=settings.browser_ingest_max_image_bytes,
+            evidence_store=service.evidence_store,
+            evidence_read_api_key=settings.evidence_read_api_key,
         )
 
         def run_uvicorn() -> None:
