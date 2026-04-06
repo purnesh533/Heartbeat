@@ -3,6 +3,7 @@ heartbeat_ai/exports/
 heartbeat_ai/venv/
 heartbeat_ai/heartbeat.log
 heartbeat_ai/events.db
+heartbeat_ai/models/
 *.pem
 __pycache__/
 *.py[cod]
