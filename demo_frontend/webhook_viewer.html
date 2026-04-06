@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Heartbeat AI — Webhook viewer</title>
+  <style>
+    :root {
+      --bg: #12151c;
+      --card: #1c2230;
+      --text: #e8ecf4;
+      --muted: #8899af;
+      --accent: #6c9eff;
+      --risk: #ff7a7a;
+    }
+    body {
+      margin: 0;
+      padding: 1.25rem;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, sans-serif;
+      max-width: 960px;
+    }
+    h1 { font-size: 1.2rem; margin: 0 0 0.5rem; }
+    p { color: var(--muted); font-size: 0.88rem; margin: 0 0 1rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; }
+    .tag {
+      background: var(--card);
+      padding: 0.35rem 0.65rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+    }
+    .tag.anomaly { border: 1px solid var(--risk); color: var(--risk); }
+    img {
+      max-width: 100%;
+      border-radius: 8px;
+      border: 1px solid #333;
+      margin: 0.5rem 0 1rem;
+    }
+    pre {
+      background: var(--card);
+      padding: 1rem;
+      border-radius: 8px;
+      overflow: auto;
+      max-height: 320px;
+      font-size: 0.75rem;
+    }
+    .err { color: var(--risk); }
+  </style>
+</head>
+<body>
+  <h1>Last webhook payload</h1>
+  <p>
+    This page is served by <code>mock_webhook_server.py</code>. Point Heartbeat
+    <code>HEARTBEAT_EXPORT_WEBHOOK_URL</code> at <code>http://127.0.0.1:9000/ingest</code>.
+  </p>
+  <div class="meta" id="meta"></div>
+  <div id="img-wrap"></div>
+  <pre id="json">Waiting for first POST…</pre>
+  <p class="err" id="err" hidden></p>
+
+  <script>
+    const origin = ""; /* same host as this page */
+
+    async function poll() {
+      const err = document.getElementById("err");
+      err.hidden = true;
+      try {
+        const r = await fetch(origin + "/api/last");
+        if (!r.ok) throw new Error(r.status);
+        const data = await r.json();
+        if (data.empty) {
+          document.getElementById("json").textContent = JSON.stringify(data, null, 2);
+          return;
+        }
+        const j = data.payload;
+        const meta = document.getElementById("meta");
+        meta.innerHTML = "";
+        function add(label, val, cls) {
+          const t = document.createElement("span");
+          t.className = "tag" + (cls ? " " + cls : "");
+          t.textContent = label + ": " + val;
+          meta.appendChild(t);
+        }
+        add("anomaly", j.anomaly);
+        if (j.anomaly) add("reasons", (j.anomaly_reasons || []).join(", "), "anomaly");
+        add("faces", j.face_count);
+        add("phones", (j.phones || []).length);
+
+        const iw = document.getElementById("img-wrap");
+        iw.innerHTML = "";
+        if (j.image_jpeg_base64) {
+          const im = document.createElement("img");
+          im.alt = "annotated frame";
+          im.src = "data:image/jpeg;base64," + j.image_jpeg_base64;
+          iw.appendChild(im);
+        }
+
+        const forText = { ...j };
+        if (forText.image_jpeg_base64) {
+          forText.image_jpeg_base64 = "<" + forText.image_jpeg_base64.length + " chars>";
+        }
+        document.getElementById("json").textContent = JSON.stringify(forText, null, 2);
+      } catch (e) {
+        err.textContent = e.message;
+        err.hidden = false;
+      }
+    }
+
+    setInterval(poll, 1500);
+    poll();
+  </script>
+</body>
+</html>

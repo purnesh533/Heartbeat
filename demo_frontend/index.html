@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Heartbeat AI — Status demo</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a2332;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3d9cf5;
+      --ok: #3dd68c;
+      --warn: #ffb020;
+      --risk: #ff6b6b;
+      --font: "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      line-height: 1.5;
+      padding: 1.5rem;
+    }
+    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 0.25rem; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    a { color: var(--accent); }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: flex-end;
+      margin-bottom: 1.25rem;
+    }
+    label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.25rem; }
+    input[type="text"] {
+      width: min(100%, 22rem);
+      padding: 0.5rem 0.65rem;
+      border: 1px solid #2d3a4d;
+      border-radius: 6px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    button.secondary { background: #2d3a4d; color: var(--text); }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1rem;
+      border: 1px solid #2d3a4d;
+    }
+    .card .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .card .v { font-size: 1.35rem; font-weight: 700; margin-top: 0.25rem; }
+    .card.risk .v { color: var(--risk); }
+    .card.ok .v { color: var(--ok); }
+    .pill {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-top: 0.35rem;
+    }
+    .pill.live { background: rgba(61, 214, 140, 0.2); color: var(--ok); }
+    .pill.dead { background: rgba(139, 156, 179, 0.25); color: var(--muted); }
+    .pill.alert { background: rgba(255, 107, 107, 0.2); color: var(--risk); }
+    pre {
+      background: var(--card);
+      border: 1px solid #2d3a4d;
+      border-radius: 10px;
+      padding: 1rem;
+      overflow: auto;
+      font-size: 0.78rem;
+      max-height: 280px;
+    }
+    .err { color: var(--risk); font-size: 0.9rem; margin-top: 0.5rem; }
+    footer { margin-top: 1.5rem; font-size: 0.8rem; color: var(--muted); }
+    .anomaly-panel {
+      margin: 1.25rem 0;
+      padding: 1rem;
+      border-radius: 12px;
+      border: 2px solid var(--risk);
+      background: rgba(255, 107, 107, 0.08);
+    }
+    .anomaly-panel h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1rem;
+      color: var(--risk);
+    }
+    .anomaly-panel .meta { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.75rem; }
+    .anomaly-panel img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid #2d3a4d;
+    }
+    .evidence-block {
+      background: var(--card);
+      border: 1px solid #2d3a4d;
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+    .evidence-block h2 {
+      margin: 0 0 0.65rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .evidence-block .path {
+      font-family: ui-monospace, monospace;
+      font-size: 0.82rem;
+      word-break: break-all;
+      color: var(--accent);
+      margin: 0.25rem 0;
+    }
+    .evidence-block .ts {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .evidence-block ul {
+      margin: 0.5rem 0 0;
+      padding-left: 1.15rem;
+      font-size: 0.8rem;
+      color: var(--text);
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .evidence-block li { margin: 0.35rem 0; }
+    .evidence-block li .p { font-family: ui-monospace, monospace; color: #a8c7e8; }
+  </style>
+</head>
+<body>
+  <h1>Heartbeat AI — live status</h1>
+  <p class="sub">
+    Polls <code>GET /status</code>, <code>GET /health</code>, and <code>GET /last_anomaly</code>.
+    When a phone or multi-user risk is active, the annotated camera frame appears below.
+    Start: <code>python -m heartbeat_ai.run</code> (not <code>--visual</code>).
+  </p>
+
+  <div class="row">
+    <div>
+      <label for="base">API base URL</label>
+      <input id="base" type="text" value="http://127.0.0.1:8000" autocomplete="off" />
+    </div>
+    <div>
+      <label for="ms">Poll interval (ms)</label>
+      <input id="ms" type="text" value="500" style="width:5rem" />
+    </div>
+    <button type="button" id="save">Save &amp; reconnect</button>
+    <button type="button" id="pause" class="secondary">Pause</button>
+  </div>
+
+  <div class="cards">
+    <div class="card" id="c-status">
+      <div class="k">Status</div>
+      <div class="v" id="v-status">—</div>
+    </div>
+    <div class="card">
+      <div class="k">Faces</div>
+      <div class="v" id="v-faces">—</div>
+    </div>
+    <div class="card">
+      <div class="k">Present</div>
+      <div class="v" id="v-present">—</div>
+    </div>
+    <div class="card">
+      <div class="k">Phone</div>
+      <div class="v" id="v-phone">—</div>
+    </div>
+    <div class="card" id="c-cam">
+      <div class="k">Camera</div>
+      <div class="v" id="v-cam">—</div>
+    </div>
+  </div>
+
+  <div id="pill-wrap"></div>
+
+  <div class="evidence-block" id="evidence-block">
+    <h2>Evidence (saved JPEG paths from <code>/status</code>)</h2>
+    <div class="ts" id="evidence-latest-label">Latest</div>
+    <div class="path" id="evidence-latest-path">—</div>
+    <div class="ts" id="evidence-latest-time"></div>
+    <h2 style="margin-top:1rem">Previous evidences</h2>
+    <ul id="evidence-prev-list"></ul>
+  </div>
+
+  <div class="anomaly-panel" id="anomaly-panel" hidden>
+    <h2>Active anomaly — annotated frame</h2>
+    <div class="meta" id="anomaly-meta"></div>
+    <img id="anomaly-img" alt="Annotated frame during phone or multi-user detection" />
+  </div>
+
+  <p style="margin: 1rem 0 0.35rem; font-size: 0.85rem; color: var(--muted);">
+    Raw <code>/status</code> JSON <span id="status-last-updated-hint"></span>
+  </p>
+  <pre id="raw">{}</pre>
+  <div class="err" id="err" hidden></div>
+
+  <footer>
+    <strong>Export / webhook testing:</strong> run
+    <code>python demo_frontend/mock_webhook_server.py</code> then set
+    <code>HEARTBEAT_EXPORT_WEBHOOK_URL=http://127.0.0.1:9000/ingest</code> and
+    <code>HEARTBEAT_EXPORT_ENABLED=1</code> (or <code>--export</code>). Open
+    <a href="http://127.0.0.1:9000/" target="_blank" rel="noopener">http://127.0.0.1:9000/</a> for the webhook viewer.
+  </footer>
+
+  <script>
+    const LS_KEY = "heartbeat_demo_api_base";
+    const baseEl = document.getElementById("base");
+    const msEl = document.getElementById("ms");
+    let timer = null;
+    let paused = false;
+
+    baseEl.value = localStorage.getItem(LS_KEY) || baseEl.value;
+
+    function pill(html, cls) {
+      const s = document.createElement("span");
+      s.className = "pill " + cls;
+      s.innerHTML = html;
+      return s;
+    }
+
+    async function tick() {
+      const base = baseEl.value.replace(/\/$/, "");
+      const errEl = document.getElementById("err");
+      errEl.hidden = true;
+      try {
+        const [st, health, lastAnom] = await Promise.all([
+          fetch(base + "/status").then((r) => {
+            if (!r.ok) throw new Error("status " + r.status);
+            return r.json();
+          }),
+          fetch(base + "/health").then((r) => r.json()).catch(() => ({})),
+          fetch(base + "/last_anomaly")
+            .then((r) => (r.ok ? r.json() : { available: false }))
+            .catch(() => ({ available: false })),
+        ]);
+
+        document.getElementById("v-status").textContent = st.status || "—";
+        document.getElementById("v-faces").textContent = st.face_count ?? "—";
+        document.getElementById("v-present").textContent =
+          st.is_present === true ? "Yes" : st.is_present === false ? "No" : "—";
+        document.getElementById("v-phone").textContent =
+          st.phone_detected === true ? "Yes" : st.phone_detected === false ? "No" : "—";
+
+        const camOk = health.camera_ok === true;
+        document.getElementById("v-cam").textContent = camOk ? "OK" : "Issue";
+        document.getElementById("c-cam").className = "card " + (camOk ? "ok" : "risk");
+
+        const high = String(st.status || "").includes("HIGH RISK");
+        const cardSt = document.getElementById("c-status");
+        cardSt.className = "card" + (high ? " risk" : "");
+
+        const wrap = document.getElementById("pill-wrap");
+        wrap.innerHTML = "";
+        if (high) wrap.appendChild(pill("HIGH RISK (multi-user)", "alert"));
+        if (st.phone_detected) wrap.appendChild(pill("Phone detected", "alert"));
+        if (camOk) wrap.appendChild(pill("API reachable", "live"));
+        else wrap.appendChild(pill("Camera flag false", "dead"));
+
+        const hint = document.getElementById("status-last-updated-hint");
+        if (st.last_updated != null && !Number.isNaN(Number(st.last_updated))) {
+          hint.textContent =
+            " · last_updated: " +
+            new Date(Number(st.last_updated) * 1000).toLocaleString();
+        } else {
+          hint.textContent = "";
+        }
+        document.getElementById("raw").textContent = JSON.stringify(st, null, 2);
+
+        const ev = st.evidence;
+        const evPathEl = document.getElementById("evidence-latest-path");
+        const evTimeEl = document.getElementById("evidence-latest-time");
+        const evList = document.getElementById("evidence-prev-list");
+        evList.innerHTML = "";
+        if (ev && (ev.relative_path || ev.absolute_path)) {
+          evPathEl.textContent = ev.relative_path || ev.absolute_path || "—";
+          if (ev.saved_at_unix != null) {
+            evTimeEl.textContent =
+              "Saved: " +
+              new Date(Number(ev.saved_at_unix) * 1000).toLocaleString() +
+              (ev.filename ? " · " + ev.filename : "");
+          } else {
+            evTimeEl.textContent = ev.filename || "";
+          }
+        } else {
+          evPathEl.textContent = "— (no anomaly JPEG saved yet)";
+          evTimeEl.textContent = "";
+        }
+        const hist = Array.isArray(st.evidence_history) ? st.evidence_history : [];
+        const prev = hist.slice(1);
+        if (prev.length === 0) {
+          const li = document.createElement("li");
+          li.textContent = "—";
+          evList.appendChild(li);
+        } else {
+          prev.forEach(function (row) {
+            const li = document.createElement("li");
+            const p = document.createElement("span");
+            p.className = "p";
+            p.textContent = row.relative_path || row.absolute_path || row.filename || "?";
+            li.appendChild(p);
+            if (row.saved_at_unix != null) {
+              li.appendChild(document.createTextNode(" · "));
+              const t = document.createElement("span");
+              t.className = "ts";
+              t.textContent = new Date(
+                Number(row.saved_at_unix) * 1000
+              ).toLocaleString();
+              li.appendChild(t);
+            }
+            evList.appendChild(li);
+          });
+        }
+
+        const ap = document.getElementById("anomaly-panel");
+        const aim = document.getElementById("anomaly-img");
+        const am = document.getElementById("anomaly-meta");
+        if (lastAnom.available && lastAnom.image_jpeg_base64) {
+          ap.hidden = false;
+          aim.src = "data:image/jpeg;base64," + lastAnom.image_jpeg_base64;
+          const reasons = (lastAnom.anomaly_reasons || []).join(", ") || "anomaly";
+          const ts = lastAnom.timestamp_unix
+            ? new Date(lastAnom.timestamp_unix * 1000).toLocaleString()
+            : "";
+          const evLine =
+            lastAnom.evidence &&
+            (lastAnom.evidence.relative_path || lastAnom.evidence.absolute_path)
+              ? " · Evidence: " +
+                (lastAnom.evidence.relative_path || lastAnom.evidence.absolute_path)
+              : "";
+          am.textContent =
+            "Reasons: " + reasons + (ts ? " · Frame time: " + ts : "") + evLine;
+        } else {
+          ap.hidden = true;
+          aim.removeAttribute("src");
+          am.textContent = "";
+        }
+      } catch (e) {
+        errEl.textContent =
+          "Cannot reach API (" + e.message + "). Is `python -m heartbeat_ai.run` running?";
+        errEl.hidden = false;
+        document.getElementById("v-cam").textContent = "—";
+        document.getElementById("c-cam").className = "card";
+        document.getElementById("anomaly-panel").hidden = true;
+        document.getElementById("anomaly-img").removeAttribute("src");
+      }
+    }
+
+    function schedule() {
+      if (timer) clearInterval(timer);
+      if (paused) return;
+      const ms = Math.max(200, parseInt(msEl.value, 10) || 500);
+      tick();
+      timer = setInterval(tick, ms);
+    }
+
+    document.getElementById("save").addEventListener("click", () => {
+      localStorage.setItem(LS_KEY, baseEl.value.trim());
+      schedule();
+    });
+    document.getElementById("pause").addEventListener("click", (ev) => {
+      paused = !paused;
+      ev.target.textContent = paused ? "Resume" : "Pause";
+      if (paused && timer) clearInterval(timer);
+      else schedule();
+    });
+
+    schedule();
+  </script>
+</body>
+</html>

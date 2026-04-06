@@ -1,0 +1,11 @@
+demo_frontend/last_webhook.json
+heartbeat_ai/exports/
+heartbeat_ai/venv/
+heartbeat_ai/heartbeat.log
+heartbeat_ai/events.db
+*.pem
+__pycache__/
+*.py[cod]
+
+# Ultralytics / local weights (downloaded on first run)
+*.pt
