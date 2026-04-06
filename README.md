@@ -32,6 +32,7 @@ Other useful modes:
 python -m heartbeat_ai.run --debug   # HTTP API + OpenCV preview window
 python -m heartbeat_ai.run --visual  # Preview only; no HTTP API
 python -m heartbeat_ai.run --export  # Disk export + optional webhook (see below)
+python -m heartbeat_ai.run --api-only  # No local webcam; browser sends JPEGs to POST /ingest/frame
 ```
 
 Or from inside `heartbeat_ai`:
@@ -62,12 +63,15 @@ The static dashboard lives in **`demo_frontend/`** at the repo root (sibling of 
 
    If the API is not on `127.0.0.1:8000`, change the **API base URL** in the page (saved in `localStorage`).
 
+4. **Browser webcam → API** (e.g. backend on Render): start the service with `--api-only` (or `HEARTBEAT_API_ONLY=1`). Open [http://127.0.0.1:8080/browser_camera.html](http://127.0.0.1:8080/browser_camera.html), set the API URL to your deployed host, allow the camera, and frames POST to `/ingest/frame`. Optional shared secret: set `HEARTBEAT_BROWSER_INGEST_KEY` on the server and the same value in the page as **X-Ingest-Key**.
+
 Webhook / export testing (`mock_webhook_server.py`, env vars) is documented in **[demo_frontend/README.md](demo_frontend/README.md)**.
 
 ## Configuration
 
 - Defaults live in [`heartbeat_ai/app/config.py`](heartbeat_ai/app/config.py).
 - Environment overrides include: `HEARTBEAT_CAMERA_INDEX`, `HEARTBEAT_API_HOST`, `HEARTBEAT_API_PORT`, `HEARTBEAT_ABSENCE_BUFFER_SEC`, and (for export) `HEARTBEAT_EXPORT_ENABLED`, `HEARTBEAT_EXPORT_WEBHOOK_URL`, `HEARTBEAT_EXPORT_WEBHOOK_KEY`, `HEARTBEAT_EXPORT_DIR`.
+- **Browser ingest:** `HEARTBEAT_API_ONLY`, `HEARTBEAT_BROWSER_INGEST` (`0`/`1`), `HEARTBEAT_BROWSER_INGEST_KEY`, `HEARTBEAT_BROWSER_INGEST_MAX_BYTES`.
 
 Logs are written to `heartbeat.log` next to the package (under `heartbeat_ai/`). Optional SQLite events DB: `events.db`.
 
@@ -87,6 +91,7 @@ With `export_enabled` (or `--export` / `HEARTBEAT_EXPORT_ENABLED`), the service 
   - `evidence_history` — same-shaped objects, newest first (up to `evidence_status_history_max`).
 - `GET http://127.0.0.1:8000/health` — `{ "ok": true, "camera_ok": bool }`.
 - `GET http://127.0.0.1:8000/last_anomaly` — while phone or multi-user risk is active: `available`, `image_jpeg_base64` (annotated JPEG when enabled), detection fields aligned with export JSON, and `evidence` when a file was saved. Otherwise `{ "available": false }`. Tuning: `api_last_anomaly_*` in config; set `api_last_anomaly_enabled` to disable.
+- `POST http://127.0.0.1:8000/ingest/frame` — `multipart/form-data` with field **`file`** (JPEG). Optional header **`X-Ingest-Key`** if `HEARTBEAT_BROWSER_INGEST_KEY` is set. Response JSON matches export-style detection fields (`ok`, `anomaly`, `face_count`, `phones`, …). With `api_only`, `GET /status` is driven from the latest ingest. `GET /status` also includes `browser_ingest` (last request summary) when ingest has run.
 
 CORS for browser demos is controlled by `api_cors_enabled` (default on for local demos).
 
@@ -97,6 +102,7 @@ CORS for browser demos is controlled by `api_cors_enabled` (default on for local
 | `--debug` | HTTP API plus OpenCV window with face / phone overlay. |
 | `--visual` | OpenCV window only; no FastAPI server. |
 | `--export` | Enable `exports/` JSON and optional webhook (`HEARTBEAT_EXPORT_WEBHOOK_URL`). |
+| `--api-only` | No local camera thread; use browser `POST /ingest/frame` (set `HEARTBEAT_API_ONLY=1` on hosts like Render). |
 | `--host`, `--port` | Override API bind address. |
 
 ## PyInstaller (single executable, no console)

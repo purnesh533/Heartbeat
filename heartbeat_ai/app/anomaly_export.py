@@ -18,7 +18,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import cv2
 import numpy as np
@@ -300,7 +300,12 @@ class AnomalyExporter:
         self,
         settings: Settings,
         *,
-        on_anomaly_payload: Optional[Callable[[Dict[str, Any]], None]] = None,
+        on_anomaly_payload: Optional[
+            Union[
+                Callable[[Dict[str, Any]], None],
+                Callable[[Dict[str, Any], str], None],
+            ]
+        ] = None,
     ) -> None:
         self._s = settings
         self._on_anomaly_payload = on_anomaly_payload
@@ -319,6 +324,15 @@ class AnomalyExporter:
             return Path(__file__).resolve().parent.parent / p
         return p
 
+    def _emit_anomaly(self, payload: Dict[str, Any], evidence_source: str) -> None:
+        cb = self._on_anomaly_payload
+        if cb is None:
+            return
+        try:
+            cb(payload, evidence_source)  # type: ignore[misc]
+        except TypeError:
+            cb(payload)  # type: ignore[misc]
+
     def tick(
         self,
         *,
@@ -332,6 +346,7 @@ class AnomalyExporter:
         face_engine: str,
         anti_spoof_name: str,
         now_mono: float,
+        evidence_source: str = "camera",
     ) -> None:
         if not self._s.export_enabled:
             return
@@ -393,8 +408,7 @@ class AnomalyExporter:
                                 _write_json(self._export_dir() / "last_anomaly.json", payload_full)
                             except Exception:
                                 logger.exception("export: failed to write last_anomaly.json")
-                            if self._on_anomaly_payload is not None:
-                                self._on_anomaly_payload(payload_full)
+                            self._emit_anomaly(payload_full, evidence_source)
                         else:
                             payload_anomaly = build_detection_payload(
                                 **base_kwargs,
@@ -414,8 +428,7 @@ class AnomalyExporter:
                                 _write_json(self._export_dir() / "last_anomaly.json", payload_anomaly)
                             except Exception:
                                 logger.exception("export: failed to write last_anomaly.json")
-                            if self._on_anomaly_payload is not None:
-                                self._on_anomaly_payload(payload_anomaly)
+                            self._emit_anomaly(payload_anomaly, evidence_source)
                         self._last_anomaly_http = now_mono
                 elif now_mono - self._last_normal_http >= self._s.export_normal_http_interval_sec:
                     _post_json(

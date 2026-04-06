@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from .anomaly_export import AnomalyExporter, build_detection_payload
+from .frame_analysis import analyze_frame_bgr, build_snap_from_detection
 from .anti_spoof import AntiSpoofFilter
 from .config import Settings
 from .database import EventDatabase
@@ -185,8 +186,10 @@ class MonitorService:
         self._anomaly_api_lock = threading.Lock()
         self._last_anomaly_api: Optional[Dict[str, Any]] = None
         self._last_anomaly_api_mono: float = 0.0
-        # At most one evidence history row per processed frame (API + exporter may both save).
-        self._evidence_logged_for_frame: int = -1
+        # One evidence row per (source, frame_index) from export / ingest payloads.
+        self._evidence_logged_key: Optional[tuple[str, int]] = None
+        self._inference_lock = threading.Lock()
+        self._browser_seq: int = 0
 
         self._exporter: Optional[AnomalyExporter] = None
         if settings.export_enabled:
@@ -195,13 +198,17 @@ class MonitorService:
                 on_anomaly_payload=self._record_evidence_if_new,
             )
 
-    def _record_evidence_if_new(self, payload: Dict[str, Any]) -> None:
+    def _record_evidence_if_new(
+        self, payload: Dict[str, Any], evidence_source: str = "camera"
+    ) -> None:
         ev = payload.get("evidence")
         if not ev:
             return
-        if self._evidence_logged_for_frame == self._frame_index:
+        fi = int(payload.get("frame_index", -1))
+        key = (evidence_source, fi)
+        if self._evidence_logged_key == key:
             return
-        self._evidence_logged_for_frame = self._frame_index
+        self._evidence_logged_key = key
         self.state.record_evidence(ev)
 
     def get_last_anomaly_for_api(self) -> Dict[str, Any]:
@@ -215,6 +222,172 @@ class MonitorService:
 
     def camera_ok_setter(self, ok: bool) -> None:
         self._camera_ok[0] = ok
+
+    def process_browser_ingest(
+        self,
+        jpeg_bytes: bytes,
+        header_api_key: Optional[str],
+    ) -> Dict[str, Any]:
+        """
+        Decode one browser JPEG, run face + phone + anti-spoof, update state when
+        ``api_only``, optional export webhook, JSON summary for HTTP response.
+        """
+        s = self.settings
+        if not s.browser_ingest_enabled:
+            return {"ok": False, "error": "browser_ingest_disabled"}
+        expected = (s.browser_ingest_api_key or "").strip()
+        if expected and (header_api_key or "").strip() != expected:
+            return {"ok": False, "error": "unauthorized"}
+        if len(jpeg_bytes) > s.browser_ingest_max_image_bytes:
+            return {"ok": False, "error": "payload_too_large"}
+
+        with self._inference_lock:
+            arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if frame is None or frame.size == 0:
+                return {"ok": False, "error": "invalid_jpeg"}
+
+            yolo_ok = self.phone_detector.ensure_model_loaded()
+            if not yolo_ok:
+                log_event(
+                    logger,
+                    "YOLO degraded (ingest)",
+                    self.phone_detector.degraded_reason or "load failed",
+                )
+
+            if self.anti_spoof is not None:
+                spoof_ok = self.anti_spoof.ensure_loaded()
+                if not spoof_ok:
+                    log_event(
+                        logger,
+                        "AntiSpoof degraded (ingest)",
+                        self.anti_spoof._degraded_reason,
+                    )
+
+            self._browser_seq += 1
+            seq = self._browser_seq
+
+            face_res, phone_boxes, liveness_scores, spoof_filtered, phone_detected = (
+                analyze_frame_bgr(
+                    frame,
+                    s,
+                    self.phone_detector,
+                    self.anti_spoof,
+                    face_zone_expand=self._face_zone_expand,
+                    run_phone_detection=True,
+                )
+            )
+            snap = build_snap_from_detection(
+                face_count=face_res.face_count,
+                phone_detected=phone_detected,
+                high_risk_on_multi_user=s.high_risk_on_multi_user,
+            )
+
+            self.state.record_browser_ingest(
+                {
+                    "seq": seq,
+                    "face_count": face_res.face_count,
+                    "phone_detected": phone_detected,
+                    "high_risk": snap["high_risk"],
+                    "status": snap["status"],
+                }
+            )
+
+            if s.api_only:
+                self.state.update(
+                    face_count=face_res.face_count,
+                    is_present=bool(snap["is_present"]),
+                    phone_detected=phone_detected,
+                    last_idle_duration_sec=None,
+                )
+
+            now_mono = time.monotonic()
+            spoof_name = (
+                self.anti_spoof.model_name
+                if self.anti_spoof is not None
+                else "disabled"
+            )
+
+            if s.api_last_anomaly_enabled:
+                risk = bool(snap.get("phone_detected") or snap.get("high_risk"))
+                if risk:
+                    if (
+                        now_mono - self._last_anomaly_api_mono
+                        >= s.api_last_anomaly_min_interval_sec
+                    ):
+                        self._last_anomaly_api_mono = now_mono
+                        try:
+                            ev_dir = (
+                                s.evidence_dir_path()
+                                if s.evidence_save_enabled
+                                else None
+                            )
+                            ev_root = s.models_dir().parent if ev_dir else None
+                            pl = build_detection_payload(
+                                frame_index=seq,
+                                face_res=face_res,
+                                phone_boxes=phone_boxes,
+                                liveness_scores=liveness_scores,
+                                spoof_filtered=spoof_filtered,
+                                snap=snap,
+                                face_engine=face_backend(),
+                                anti_spoof_name=spoof_name,
+                                include_image_b64=True,
+                                frame_bgr=frame,
+                                jpeg_quality=s.api_last_anomaly_jpeg_quality,
+                                save_evidence_to=ev_dir,
+                                evidence_package_root=ev_root,
+                            )
+                            with self._anomaly_api_lock:
+                                self._last_anomaly_api = pl
+                            self._record_evidence_if_new(pl, evidence_source="browser")
+                        except Exception:
+                            logger.exception("Last-anomaly API snapshot failed (ingest)")
+                else:
+                    with self._anomaly_api_lock:
+                        self._last_anomaly_api = None
+
+            if self._exporter is not None:
+                try:
+                    self._exporter.tick(
+                        frame_bgr=frame,
+                        face_res=face_res,
+                        phone_boxes=phone_boxes,
+                        liveness_scores=liveness_scores,
+                        spoof_filtered=spoof_filtered,
+                        snap=snap,
+                        frame_index=seq,
+                        face_engine=face_backend(),
+                        anti_spoof_name=spoof_name,
+                        now_mono=now_mono,
+                        evidence_source="browser",
+                    )
+                except Exception:
+                    logger.exception("Anomaly export tick failed (ingest)")
+
+            if self.db is not None and s.api_only:
+                snap_db = self.state.snapshot()
+                self.db.insert_if_due(
+                    face_count=int(snap_db["face_count"]),
+                    phone_detected=bool(snap_db["phone_detected"]),
+                    status=str(snap_db["status"]),
+                    min_interval_sec=s.db_insert_min_interval_sec,
+                )
+
+            payload = build_detection_payload(
+                frame_index=seq,
+                face_res=face_res,
+                phone_boxes=phone_boxes,
+                liveness_scores=liveness_scores,
+                spoof_filtered=spoof_filtered,
+                snap=snap,
+                face_engine=face_backend(),
+                anti_spoof_name=spoof_name,
+                include_image_b64=False,
+                frame_bgr=None,
+                jpeg_quality=s.export_jpeg_quality,
+            )
+            return {"ok": True, **payload}
 
     def processing_loop(self) -> None:
         """Consumer: face + periodic YOLO + idle + state + logs."""
@@ -391,7 +564,7 @@ class MonitorService:
                             )
                             with self._anomaly_api_lock:
                                 self._last_anomaly_api = pl
-                            self._record_evidence_if_new(pl)
+                            self._record_evidence_if_new(pl, evidence_source="camera")
                         except Exception:
                             logger.exception("Last-anomaly API snapshot failed")
                 else:
@@ -411,6 +584,7 @@ class MonitorService:
                         face_engine=face_backend(),
                         anti_spoof_name=spoof_name,
                         now_mono=now_mono,
+                        evidence_source="camera",
                     )
                 except Exception:
                     logger.exception("Anomaly export tick failed")

@@ -29,6 +29,10 @@ CORS is enabled on the FastAPI app when `api_cors_enabled` is `True` (default in
 
 You can change the **API base URL** in the page (stored in `localStorage`).
 
+### Browser camera → API (`browser_camera.html`)
+
+Use when the model runs on a host **without** a webcam (e.g. Render). Run the backend with `--api-only` or `HEARTBEAT_API_ONLY=1`, open **http://127.0.0.1:8080/browser_camera.html**, set the API base URL (your `https://…` service), and start. Frames are sent as `POST /ingest/frame` (`multipart` field `file`). Optional: `HEARTBEAT_BROWSER_INGEST_KEY` on the server and the same value in the page.
+
 ---
 
 ## 2. Webhook / export testing

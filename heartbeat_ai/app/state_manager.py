@@ -20,6 +20,8 @@ class MonitorState:
     last_idle_duration_sec: Optional[float] = None
     # Newest first; each entry: filename, relative_path, absolute_path, saved_at_unix
     evidence_history: List[Dict[str, Any]] = field(default_factory=list)
+    # Last browser ``POST /ingest/frame`` summary (optional)
+    browser_ingest: Optional[Dict[str, Any]] = None
 
 
 class StateManager:
@@ -80,6 +82,12 @@ class StateManager:
             if len(self._state.evidence_history) > self._evidence_history_max:
                 del self._state.evidence_history[self._evidence_history_max :]
 
+    def record_browser_ingest(self, summary: Dict[str, Any]) -> None:
+        """Latest remote frame metadata for GET /status."""
+
+        with self._lock:
+            self._state.browser_ingest = {**summary, "last_at_unix": time.time()}
+
     def snapshot(self) -> Dict[str, Any]:
         with self._lock:
             hist = list(self._state.evidence_history)
@@ -92,6 +100,7 @@ class StateManager:
                 "high_risk": self._state.high_risk,
                 "evidence": hist[0] if hist else None,
                 "evidence_history": hist,
+                "browser_ingest": self._state.browser_ingest,
             }
 
     def to_status_dict(self) -> Dict[str, Any]:
@@ -107,4 +116,5 @@ class StateManager:
                 "last_updated": self._state.last_updated,
                 "evidence": hist[0] if hist else None,
                 "evidence_history": hist,
+                "browser_ingest": self._state.browser_ingest,
             }

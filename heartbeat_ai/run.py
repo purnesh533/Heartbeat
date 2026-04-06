@@ -66,6 +66,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable JSON export (heartbeat_ai/exports/) and optional webhook (set HEARTBEAT_EXPORT_WEBHOOK_URL)",
     )
+    p.add_argument(
+        "--api-only",
+        action="store_true",
+        help="FastAPI + POST /ingest/frame only; no local webcam (use with browser camera → Render)",
+    )
     return p.parse_args()
 
 
@@ -74,6 +79,8 @@ def main() -> None:
     settings = settings_from_env()
     if args.export:
         settings.export_enabled = True
+    if args.api_only:
+        settings.api_only = True
     if args.host:
         settings.api_host = args.host
     if args.port is not None:
@@ -82,7 +89,12 @@ def main() -> None:
     visual_only = bool(args.visual)
     setup_logging(settings.log_path(), console=bool(args.debug or visual_only))
     log = logging.getLogger("heartbeat")
-    log.info("Starting Heartbeat AI | debug=%s visual_only=%s", args.debug, visual_only)
+    log.info(
+        "Starting Heartbeat AI | debug=%s visual_only=%s api_only=%s",
+        args.debug,
+        visual_only,
+        settings.api_only,
+    )
     _warn_if_numpy2(log)
 
     camera_ok: list = [False]
@@ -108,8 +120,11 @@ def main() -> None:
 
     proc = threading.Thread(target=service.processing_loop, name="ProcessingThread", daemon=True)
 
-    cam.start()
-    proc.start()
+    if not settings.api_only:
+        cam.start()
+        proc.start()
+    else:
+        log.info("API-only | local camera thread disabled; use POST /ingest/frame")
 
     if not visual_only:
         import uvicorn  # noqa: E402
@@ -121,6 +136,12 @@ def main() -> None:
             camera_ok,
             cors_enabled=settings.api_cors_enabled,
             last_anomaly_getter=service.get_last_anomaly_for_api,
+            browser_ingest_handler=(
+                service.process_browser_ingest
+                if settings.browser_ingest_enabled
+                else None
+            ),
+            browser_ingest_max_bytes=settings.browser_ingest_max_image_bytes,
         )
 
         def run_uvicorn() -> None:
@@ -135,7 +156,7 @@ def main() -> None:
         api_thread = threading.Thread(target=run_uvicorn, name="UvicornThread", daemon=True)
         api_thread.start()
         log.info(
-            "API listening | http://%s:%s/status | http://%s:%s/last_anomaly",
+            "API listening | http://%s:%s/status | http://%s:%s/last_anomaly | POST /ingest/frame",
             settings.api_host,
             settings.api_port,
             settings.api_host,

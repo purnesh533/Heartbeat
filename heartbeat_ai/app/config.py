@@ -73,6 +73,13 @@ class Settings:
     # Max entries returned on GET /status (``evidence_history`` + ``evidence``).
     evidence_status_history_max: int = 30
 
+    # Browser → POST JPEG to ``POST /ingest/frame`` (e.g. Render; no server webcam).
+    browser_ingest_enabled: bool = True
+    browser_ingest_api_key: str = ""
+    browser_ingest_max_image_bytes: int = 6_000_000
+    # No local camera thread (``HEARTBEAT_API_ONLY=1`` or ``--api-only``).
+    api_only: bool = False
+
     # Paths (relative to package root heartbeat_ai/)
     log_file: str = "heartbeat.log"
     sqlite_db: str = "events.db"
@@ -160,4 +167,26 @@ def settings_from_env() -> Settings:
         s.export_webhook_api_key = v
     if v := os.environ.get("HEARTBEAT_EXPORT_DIR", "").strip():
         s.export_dir = v
+
+    def _truthy(name: str) -> Optional[bool]:
+        raw = os.environ.get(name, "").strip().lower()
+        if raw in ("1", "true", "yes", "on"):
+            return True
+        if raw in ("0", "false", "no", "off"):
+            return False
+        return None
+
+    bi = _truthy("HEARTBEAT_BROWSER_INGEST")
+    if bi is not None:
+        s.browser_ingest_enabled = bi
+    if v := os.environ.get("HEARTBEAT_BROWSER_INGEST_KEY", "").strip():
+        s.browser_ingest_api_key = v
+    if v := os.environ.get("HEARTBEAT_BROWSER_INGEST_MAX_BYTES", "").strip():
+        try:
+            s.browser_ingest_max_image_bytes = max(64_000, int(v))
+        except ValueError:
+            pass
+    ao = _truthy("HEARTBEAT_API_ONLY")
+    if ao is not None:
+        s.api_only = ao
     return s

@@ -7,3 +7,4 @@ mediapipe>=0.10.14,<0.11
 ultralytics>=8.0.200
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
