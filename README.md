@@ -67,10 +67,12 @@ docker compose up --build
 
 This repo includes [`render.yaml`](render.yaml): **root directory `backend`**, start command with `--api-only` and `$PORT`.
 
+**RAM:** The free **512MB** tier usually **runs out of memory** (PyTorch + MediaPipe + YOLO). Use a **paid instance with at least ~2GB RAM**, or deploy on a larger VPS. The blueprint uses CPU-only PyTorch reinstall + thread caps to reduce usage slightly, but that is not enough for 512MB.
+
 Manual settings:
 
 - **Root directory:** `backend`
-- **Build:** `pip install -r requirements.txt && pip install .`
+- **Build:** match [`render.yaml`](render.yaml) (CPU PyTorch reinstall + `pip install .`) or use the same command from [`backend/README.md`](backend/README.md)
 - **Start:** `HEARTBEAT_API_ONLY=1 python -m heartbeat_ai.run --api-only --host 0.0.0.0 --port $PORT`
 - **Health check:** `/health`
 

@@ -39,11 +39,17 @@ docker run -p 8000:8000 -e PORT=8000 heartbeat-api
 
 ## Deploy (Render / Railway / Fly.io)
 
+### Memory (important)
+
+This stack (**PyTorch + Ultralytics + MediaPipe + OpenCV**) typically needs **at least ~1.5–2GB RAM** for a stable runtime. **Render Free (512MB)** will OOM — upgrade the Web Service to a **paid plan with 2GB+** (or use a larger VPS).
+
+Mitigations already used on Render (`render.yaml`): reinstall **CPU-only** PyTorch after `pip install -r requirements.txt`, and cap `OMP_NUM_THREADS=1` etc. That helps a bit but does **not** make 512MB reliable.
+
 - **Root directory:** `backend` (if the platform supports it), or run commands from `backend/`.
-- **Build:** `pip install -r requirements.txt && pip install .`  
-  (`pip install .` registers the `heartbeat_ai` package so `python -m heartbeat_ai.run` works on Render, etc.)
-- **Start:** `HEARTBEAT_API_ONLY=1 python -m heartbeat_ai.run --api-only --host 0.0.0.0 --port $PORT`  
-  (Use your platform’s port variable, e.g. `$PORT` on Render/Railway.)
+- **Build (Render, recommended):**  
+  `pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu --force-reinstall && pip install --no-cache-dir .`
+- **Build (local / other):** `pip install -r requirements.txt && pip install .`
+- **Start (small instances):** prefix `OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1` before `HEARTBEAT_API_ONLY=1 python -m heartbeat_ai.run --api-only --host 0.0.0.0 --port $PORT`
 - **Health check path:** `/health`
 - **Python:** `runtime.txt` pins 3.10.x; override with your host’s Python setting if needed.
 

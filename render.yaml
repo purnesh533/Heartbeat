@@ -1,9 +1,12 @@
 # https://render.com/docs/blueprint-spec
+# RAM: PyTorch + MediaPipe + YOLO need well above 512MB. Use a paid instance (e.g. 2GB+), not Free.
 services:
   - type: web
     name: heartbeat-api
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && pip install .
-    startCommand: HEARTBEAT_API_ONLY=1 python -m heartbeat_ai.run --api-only --host 0.0.0.0 --port $PORT
+    # Install deps, then replace default (CUDA) torch with CPU wheels to cut runtime RAM/disk a bit.
+    buildCommand: pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu --force-reinstall && pip install --no-cache-dir .
+    # Cap BLAS threads to save a little RAM on small instances.
+    startCommand: OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 HEARTBEAT_API_ONLY=1 python -m heartbeat_ai.run --api-only --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
