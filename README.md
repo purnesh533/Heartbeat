@@ -19,6 +19,7 @@ python -m venv .venv
 .venv\Scripts\activate   # Windows
 # source .venv/bin/activate  # Linux/macOS
 pip install -r requirements.txt
+pip install .
 python -m heartbeat_ai.run --host 127.0.0.1 --port 8000
 ```
 
@@ -40,9 +41,10 @@ Open [http://127.0.0.1:8080/](http://127.0.0.1:8080/). Set the **API base URL** 
 
 ```bash
 pip install -r requirements.txt
+cd backend && pip install .
 ```
 
-This includes [`backend/requirements.txt`](backend/requirements.txt) via `-r`. You still **run** the app from `backend/`:
+This includes [`backend/requirements.txt`](backend/requirements.txt) via `-r`. From `backend/`, run **`pip install .`** once so `python -m heartbeat_ai.run` resolves. Then:
 
 ```bash
 cd backend && python -m heartbeat_ai.run --api-only --host 127.0.0.1 --port 8000
@@ -68,7 +70,7 @@ This repo includes [`render.yaml`](render.yaml): **root directory `backend`**, s
 Manual settings:
 
 - **Root directory:** `backend`
-- **Build:** `pip install -r requirements.txt`
+- **Build:** `pip install -r requirements.txt && pip install .`
 - **Start:** `HEARTBEAT_API_ONLY=1 python -m heartbeat_ai.run --api-only --host 0.0.0.0 --port $PORT`
 - **Health check:** `/health`
 

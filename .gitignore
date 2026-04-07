@@ -8,5 +8,7 @@ backend/heartbeat_ai/models/
 *.pem
 __pycache__/
 *.py[cod]
+*.egg-info/
+backend/build/
 
 # Ultralytics / local weights (downloaded on first run)

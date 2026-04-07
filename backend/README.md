@@ -11,6 +11,7 @@ python -m venv .venv
 .venv\Scripts\activate   # Windows
 # source .venv/bin/activate  # Linux/macOS
 pip install -r requirements.txt
+pip install .
 python -m heartbeat_ai.run --api-only --host 127.0.0.1 --port 8000
 ```
 
@@ -39,7 +40,8 @@ docker run -p 8000:8000 -e PORT=8000 heartbeat-api
 ## Deploy (Render / Railway / Fly.io)
 
 - **Root directory:** `backend` (if the platform supports it), or run commands from `backend/`.
-- **Build:** `pip install -r requirements.txt`
+- **Build:** `pip install -r requirements.txt && pip install .`  
+  (`pip install .` registers the `heartbeat_ai` package so `python -m heartbeat_ai.run` works on Render, etc.)
 - **Start:** `HEARTBEAT_API_ONLY=1 python -m heartbeat_ai.run --api-only --host 0.0.0.0 --port $PORT`  
   (Use your platform’s port variable, e.g. `$PORT` on Render/Railway.)
 - **Health check path:** `/health`

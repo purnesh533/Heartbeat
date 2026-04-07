@@ -13,10 +13,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+COPY requirements.txt setup.py ./
 COPY heartbeat_ai ./heartbeat_ai
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir .
 
 EXPOSE 8000
 
